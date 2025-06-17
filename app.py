@@ -111,7 +111,7 @@ def login():
         participants = sheet.get_all_records()
         for p in participants:
             if p["Name"] == name and p["PasswordHash"] == hashed_pw:
-                if not p.get("ManittoEncoded", ""):
+                if not p.get("ManitoEncoded", ""):
                     return "아직 마니또 매칭이 완료되지 않았습니다."
                 return redirect(url_for('manito', username=name))
         return "로그인 실패: 이름 또는 비밀번호가 잘못되었습니다."
