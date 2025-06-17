@@ -35,11 +35,6 @@ def assign_manittos():
         row = i + 2
         sheet.update_cell(row, 3, name)  # C열 = ManittoEncoded
 
-# 루트 경로 추가: 로그인 페이지로 리다이렉트
-@app.route("/")
-def index():
-    return redirect("/login")
-
 # 참가자 등록
 @app.route("/register", methods=["GET", "POST"])
 def register():
@@ -91,4 +86,6 @@ def manito(username):
     return "사용자를 찾을 수 없습니다."
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    import os
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
