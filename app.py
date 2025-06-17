@@ -1,13 +1,14 @@
-from flask import Flask, render_template, request, redirect
+from flask import Flask, render_template, request, redirect, flash, url_for
 import hashlib
 import os
 import json
 import random
-import base64
 import gspread
 from google.oauth2.service_account import Credentials
+import base64
 
 app = Flask(__name__)
+app.secret_key = os.urandom(24)  # flash 메시지용 시크릿 키 설정
 
 # Google Sheets 설정
 SHEET_ID = "12FjEPKhsZS0UvGHx9Kdi3HBLtz6iOz7USAq9mhKG6cA"
@@ -20,21 +21,27 @@ creds = Credentials.from_service_account_info(creds_info, scopes=scopes)
 client = gspread.authorize(creds)
 sheet = client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
 
-# SHA-256 해시 함수
+# SHA-256 해시 함수 (비밀번호 저장용)
 def hash_password(pw):
     return hashlib.sha256(pw.encode()).hexdigest()
 
-# Base64 인코딩 함수
-def encode_manitto(name):
-    encoded_bytes = base64.b64encode(name.encode('utf-8'))
-    return encoded_bytes.decode('utf-8')
+# XOR 간단 암호화/복호화 함수 (마니또 암호화용)
+def xor_encrypt_decrypt(text, key='secretkey'):
+    key = key.encode()
+    text_bytes = text.encode() if isinstance(text, str) else text
+    output = bytearray()
+    for i in range(len(text_bytes)):
+        output.append(text_bytes[i] ^ key[i % len(key)])
+    return base64.b64encode(output).decode() if isinstance(text, str) else base64.b64decode(text)
 
-# Base64 디코딩 함수
-def decode_manitto(encoded_str):
-    decoded_bytes = base64.b64decode(encoded_str.encode('utf-8'))
-    return decoded_bytes.decode('utf-8')
+def encrypt_manito(text):
+    return xor_encrypt_decrypt(text)
 
-# 마니또 배정 함수
+def decrypt_manito(encoded_text):
+    decoded = xor_encrypt_decrypt(base64.b64decode(encoded_text).decode())
+    return decoded
+
+# 마니또 배정 함수 (암호화 포함)
 def assign_manittos():
     names = sheet.col_values(1)[1:]  # A열: 이름, 첫 행 제외
     shuffled = names[:]
@@ -42,10 +49,15 @@ def assign_manittos():
         random.shuffle(shuffled)
         if all(a != b for a, b in zip(names, shuffled)):
             break
-    for i, name in enumerate(shuffled):
+    for i, manito_name in enumerate(shuffled):
         row = i + 2
-        encoded_name = encode_manitto(name)  # 인코딩 후 저장
-        sheet.update_cell(row, 3, encoded_name)  # C열 = ManittoEncoded
+        encrypted_manito = encrypt_manito(manito_name)
+        sheet.update_cell(row, 3, encrypted_manito)  # C열 = 암호화된 ManittoEncoded
+
+# 기본 루트 → /register로 리다이렉트
+@app.route("/")
+def index():
+    return redirect("/register")
 
 # 참가자 등록
 @app.route("/register", methods=["GET", "POST"])
@@ -58,7 +70,8 @@ def register():
         participants = sheet.get_all_records()
 
         if any(p["Name"] == name for p in participants):
-            return "이미 등록된 이름입니다."
+            flash("이미 등록된 이름입니다. 로그인 화면으로 이동합니다.")
+            return redirect(url_for("login"))
 
         if len(participants) >= 9:
             return "참가자는 9명까지만 등록할 수 있습니다."
@@ -84,27 +97,10 @@ def login():
             if p["Name"] == name and p["PasswordHash"] == hashed_pw:
                 if not p["ManittoEncoded"]:
                     return "아직 마니또 매칭이 완료되지 않았습니다."
-                manitto_name = decode_manitto(p["ManittoEncoded"])  # 디코딩
-                return render_template("manito.html", manito=manitto_name)
+                decrypted_manito = decrypt_manito(p["ManittoEncoded"])
+                return render_template("manito.html", manito=decrypted_manito)
         return "로그인 실패: 이름 또는 비밀번호가 잘못되었습니다."
     return render_template("login.html")
 
-# 마니또 확인 (직접 URL 접속용)
-@app.route("/manito/<username>")
-def manito(username):
-    participants = sheet.get_all_records()
-    for p in participants:
-        if p["Name"] == username:
-            if not p["ManittoEncoded"]:
-                return "아직 마니또 매칭이 완료되지 않았습니다."
-            manitto_name = decode_manitto(p["ManittoEncoded"])
-            return render_template("manito.html", manito=manitto_name)
-    return "사용자를 찾을 수 없습니다."
-
-# 기본 URL -> /register 로 리다이렉트
-@app.route("/")
-def index():
-    return redirect("/register")
-
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
