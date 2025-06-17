@@ -1,19 +1,39 @@
-from flask import Flask, request, render_template, redirect, url_for
-import json, os, random
+from flask import Flask, request, render_template, redirect
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+import hashlib
+import base64
+import os
+import json
 
 app = Flask(__name__)
 
-DATA_FILE = 'participants.json'
+# Google Sheets 연결 설정
+def get_sheet():
+    scope = [
+        "https://spreadsheets.google.com/feeds",
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
+    credentials_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
+    if not credentials_json:
+        raise Exception("환경변수 GOOGLE_CREDENTIALS_JSON이 설정되지 않았습니다.")
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(json.loads(credentials_json), scope)
+    client = gspread.authorize(creds)
+    sheet = client.open("ManittoParticipants").sheet1
+    return sheet
 
-def load_participants():
-    if not os.path.exists(DATA_FILE):
-        return []
-    with open(DATA_FILE, 'r') as f:
-        return json.load(f)
+# 비밀번호 해시 함수
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
 
-def save_participants(data):
-    with open(DATA_FILE, 'w') as f:
-        json.dump(data, f, indent=2)
+# 마니또 이름 인코딩 (Base64)
+def encode_manito(name):
+    return base64.b64encode(name.encode()).decode()
+
+# 마니또 이름 디코딩
+def decode_manito(encoded_name):
+    return base64.b64decode(encoded_name.encode()).decode()
 
 @app.route('/')
 def index():
@@ -21,18 +41,30 @@ def index():
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
-    participants = load_participants()
-
+    sheet = get_sheet()
+    records = sheet.get_all_records()
     if request.method == 'POST':
         name = request.form['name']
         pw = request.form['password']
 
-        if any(p['name'] == name for p in participants):
+        if any(r['Name'] == name for r in records):
             return "이미 등록된 이름입니다."
 
-        # ✅ 참가자 수가 9명을 초과하면 등록 차단
-        if len(participants) >= 9:
+        if len(records) >= 9:
             return "참가자가 모두 등록되어 더 이상 등록할 수 없습니다."
 
-        # ✅ 등록 허용
-        participants.append({"na
+        pw_hash = hash_password(pw)
+        sheet.append_row([name, pw_hash, ""])  # 마니또는 아직 없음
+
+        records = sheet.get_all_records()
+        if len(records) == 9:
+            names = [r['Name'] for r in records]
+            shuffled = names[:]
+            import random
+            while True:
+                random.shuffle(shuffled)
+                if all(a != b for a, b in zip(names, shuffled)):
+                    break
+            for i, name in enumerate(names):
+                encoded = encode_manito(shuffled[i])
+                sheet.u
