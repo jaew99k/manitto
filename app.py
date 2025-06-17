@@ -20,18 +20,19 @@ sheet = client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
 def hash_password(pw):
     return hashlib.sha256(pw.encode()).hexdigest()
 
+# 암호화 및 복호화 함수
 import base64
 SECRET_KEY = 7
 
-# 암호화 함수
 def encrypt_manito(name):
-    xor_bytes = bytes([ord(c) ^ SECRET_KEY for c in name])
+    name_bytes = name.encode('utf-8')
+    xor_bytes = bytes([b ^ SECRET_KEY for b in name_bytes])
     return base64.urlsafe_b64encode(xor_bytes).decode('utf-8')
 
-# 복호화 함수
 def decrypt_manito(encoded):
     decoded_bytes = base64.urlsafe_b64decode(encoded.encode('utf-8'))
-    return ''.join(chr(b ^ SECRET_KEY) for b in decoded_bytes)
+    original_bytes = bytes([b ^ SECRET_KEY for b in decoded_bytes])
+    return original_bytes.decode('utf-8')
 
 def assign_manittos():
     names = sheet.col_values(1)[1:]
