@@ -1,12 +1,14 @@
-from flask import Flask, render_template, request, redirect, url_for, Response
+from flask import Flask, render_template, request, redirect, url_for, Response, session
 import hashlib
 import os
 import json
 import random
 import gspread
 from google.oauth2.service_account import Credentials
+import base64
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret")  # 세션 보호용 키
 
 SHEET_ID = "12FjEPKhsZS0UvGHx9Kdi3HBLtz6iOz7USAq9mhKG6cA"
 SHEET_NAME = "participants"
@@ -17,11 +19,11 @@ creds = Credentials.from_service_account_info(creds_info, scopes=scopes)
 client = gspread.authorize(creds)
 sheet = client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
 
+# 비밀번호 해시
 def hash_password(pw):
     return hashlib.sha256(pw.encode()).hexdigest()
 
-# 암호화 및 복호화 함수
-import base64
+# 암호화 / 복호화 (UTF-8 기반 XOR)
 SECRET_KEY = 7
 
 def encrypt_manito(name):
@@ -34,6 +36,7 @@ def decrypt_manito(encoded):
     original_bytes = bytes([b ^ SECRET_KEY for b in decoded_bytes])
     return original_bytes.decode('utf-8')
 
+# 마니또 무작위 배정
 def assign_manittos():
     names = sheet.col_values(1)[1:]
     shuffled = names[:]
@@ -109,12 +112,18 @@ def login():
             if p["Name"] == name and p["PasswordHash"] == hashed_pw:
                 if not p.get("ManitoEncoded", ""):
                     return "아직 마니또 매칭이 완료되지 않았습니다."
-                return redirect(url_for('manito', username=name))
+                session["username"] = name  # 세션에 사용자 저장
+                return redirect(url_for('manito'))
+
         return "로그인 실패: 이름 또는 비밀번호가 잘못되었습니다."
     return render_template("login.html")
 
-@app.route("/manito/<username>")
-def manito(username):
+@app.route("/manito")
+def manito():
+    username = session.get("username")
+    if not username:
+        return redirect(url_for("login"))
+
     participants = sheet.get_all_records()
     for p in participants:
         if p["Name"] == username:
@@ -123,9 +132,14 @@ def manito(username):
                 return "아직 마니또 매칭이 완료되지 않았습니다."
             decrypted_manito = decrypt_manito(encrypted_manito)
             return render_template("manito.html", manito=decrypted_manito)
+
     return "사용자를 찾을 수 없습니다."
 
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
 if __name__ == "__main__":
-    import os
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True)
