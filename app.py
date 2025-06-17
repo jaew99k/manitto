@@ -39,11 +39,29 @@ def decrypt_manito(encoded):
 # 마니또 무작위 배정
 def assign_manittos():
     names = sheet.col_values(1)[1:]
-    shuffled = names[:]
     while True:
+        shuffled = names[:]
         random.shuffle(shuffled)
-        if all(a != b for a, b in zip(names, shuffled)):
-            break
+
+        # 1. 자기 자신에게 배정되는 경우 제거
+        if any(a == b for a, b in zip(names, shuffled)):
+            continue
+
+        # 2. 서로가 서로에게 배정되는 경우 제거
+        is_mutual = False
+        pair_dict = dict(zip(names, shuffled))
+        for a in names:
+            b = pair_dict[a]
+            if pair_dict.get(b) == a:
+                is_mutual = True
+                break
+        if is_mutual:
+            continue
+
+        # 조건 모두 통과 → 배정 확정
+        break
+
+    # 배정 결과 Google Sheet에 업데이트
     for i, name in enumerate(shuffled):
         row = i + 2
         encrypted_name = encrypt_manito(name)
