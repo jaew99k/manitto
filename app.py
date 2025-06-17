@@ -5,7 +5,6 @@ import json
 import random
 import gspread
 from google.oauth2.service_account import Credentials
-import base64
 
 app = Flask(__name__)
 
@@ -21,22 +20,13 @@ sheet = client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
 def hash_password(pw):
     return hashlib.sha256(pw.encode()).hexdigest()
 
-def xor_encrypt(text, key='secretkey'):
-    result = []
-    key_len = len(key)
-    for i, c in enumerate(text):
-        result.append(chr(ord(c) ^ ord(key[i % key_len])))
-    encrypted_bytes = ''.join(result).encode('latin1')
-    return base64.b64encode(encrypted_bytes).decode('ascii')
+# 암호화 함수 (간단한 시저 암호)
+def encrypt_manito(name):
+    return ''.join(chr((ord(c) + 3) % 256) for c in name)
 
-def xor_decrypt(encoded_text, key='secretkey'):
-    encrypted_bytes = base64.b64decode(encoded_text.encode('ascii'))
-    encrypted_text = encrypted_bytes.decode('latin1')
-    result = []
-    key_len = len(key)
-    for i, c in enumerate(encrypted_text):
-        result.append(chr(ord(c) ^ ord(key[i % key_len])))
-    return ''.join(result)
+# 복호화 함수
+def decrypt_manito(enc_name):
+    return ''.join(chr((ord(c) - 3) % 256) for c in enc_name)
 
 def assign_manittos():
     names = sheet.col_values(1)[1:]
@@ -47,7 +37,7 @@ def assign_manittos():
             break
     for i, name in enumerate(shuffled):
         row = i + 2
-        encrypted_name = xor_encrypt(name)
+        encrypted_name = encrypt_manito(name)
         sheet.update_cell(row, 3, encrypted_name)
 
 @app.route("/")
@@ -111,7 +101,7 @@ def login():
         participants = sheet.get_all_records()
         for p in participants:
             if p["Name"] == name and p["PasswordHash"] == hashed_pw:
-                if not p.get("ManitoEncoded", ""):
+                if not p.get("ManittoEncoded", ""):
                     return "아직 마니또 매칭이 완료되지 않았습니다."
                 return redirect(url_for('manito', username=name))
         return "로그인 실패: 이름 또는 비밀번호가 잘못되었습니다."
@@ -125,7 +115,7 @@ def manito(username):
             encrypted_manito = p.get("ManittoEncoded", "")
             if not encrypted_manito:
                 return "아직 마니또 매칭이 완료되지 않았습니다."
-            decrypted_manito = xor_decrypt(encrypted_manito)
+            decrypted_manito = decrypt_manito(encrypted_manito)
             return render_template("manito.html", manito=decrypted_manito)
     return "사용자를 찾을 수 없습니다."
 
