@@ -1,27 +1,42 @@
-from flask import Flask, render_template, request, redirect, url_for, Response
+from flask import Flask, render_template, request, redirect
 import hashlib
 import os
 import json
 import random
+import base64
 import gspread
 from google.oauth2.service_account import Credentials
 
 app = Flask(__name__)
 
+# Google Sheets 설정
 SHEET_ID = "12FjEPKhsZS0UvGHx9Kdi3HBLtz6iOz7USAq9mhKG6cA"
 SHEET_NAME = "participants"
 
+# credentials 환경변수에서 불러오기 + 필수 OAuth scope 명시
 creds_info = json.loads(os.environ["GOOGLE_CREDENTIALS"])
 scopes = ["https://www.googleapis.com/auth/spreadsheets"]
 creds = Credentials.from_service_account_info(creds_info, scopes=scopes)
 client = gspread.authorize(creds)
 sheet = client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
 
+# SHA-256 해시 함수
 def hash_password(pw):
     return hashlib.sha256(pw.encode()).hexdigest()
 
+# Base64 인코딩 함수
+def encode_manitto(name):
+    encoded_bytes = base64.b64encode(name.encode('utf-8'))
+    return encoded_bytes.decode('utf-8')
+
+# Base64 디코딩 함수
+def decode_manitto(encoded_str):
+    decoded_bytes = base64.b64decode(encoded_str.encode('utf-8'))
+    return decoded_bytes.decode('utf-8')
+
+# 마니또 배정 함수
 def assign_manittos():
-    names = sheet.col_values(1)[1:]
+    names = sheet.col_values(1)[1:]  # A열: 이름, 첫 행 제외
     shuffled = names[:]
     while True:
         random.shuffle(shuffled)
@@ -29,12 +44,10 @@ def assign_manittos():
             break
     for i, name in enumerate(shuffled):
         row = i + 2
-        sheet.update_cell(row, 3, name)
+        encoded_name = encode_manitto(name)  # 인코딩 후 저장
+        sheet.update_cell(row, 3, encoded_name)  # C열 = ManittoEncoded
 
-@app.route("/")
-def index():
-    return redirect(url_for('register'))
-
+# 참가자 등록
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
@@ -45,30 +58,7 @@ def register():
         participants = sheet.get_all_records()
 
         if any(p["Name"] == name for p in participants):
-            html = f"""
-            <!DOCTYPE html>
-            <html lang="ko">
-            <head>
-                <meta charset="UTF-8" />
-                <title>알림</title>
-                <meta http-equiv="refresh" content="3; url={url_for('login')}">
-                <style>
-                    body {{
-                        font-family: Arial, sans-serif;
-                        text-align: center;
-                        padding-top: 100px;
-                        font-size: 18px;
-                    }}
-                </style>
-            </head>
-            <body>
-                <p>이미 존재하는 이름입니다.<br>로그인 화면으로 이동합니다.</p>
-                <p>3초 후에 자동으로 이동합니다.</p>
-                <p>이동하지 않으면 <a href="{url_for('login')}">여기를 클릭</a>하세요.</p>
-            </body>
-            </html>
-            """
-            return Response(html, mimetype='text/html')
+            return "이미 등록된 이름입니다."
 
         if len(participants) >= 9:
             return "참가자는 9명까지만 등록할 수 있습니다."
@@ -78,10 +68,10 @@ def register():
         if len(participants) + 1 == 9:
             assign_manittos()
 
-        return redirect(url_for('login'))
-
+        return redirect("/login")
     return render_template("register.html")
 
+# 로그인
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -92,21 +82,29 @@ def login():
         participants = sheet.get_all_records()
         for p in participants:
             if p["Name"] == name and p["PasswordHash"] == hashed_pw:
-                if not p.get("ManittoEncoded", ""):
+                if not p["ManittoEncoded"]:
                     return "아직 마니또 매칭이 완료되지 않았습니다."
-                return redirect(url_for('manito', username=name))
+                manitto_name = decode_manitto(p["ManittoEncoded"])  # 디코딩
+                return render_template("manito.html", manito=manitto_name)
         return "로그인 실패: 이름 또는 비밀번호가 잘못되었습니다."
     return render_template("login.html")
 
+# 마니또 확인 (직접 URL 접속용)
 @app.route("/manito/<username>")
 def manito(username):
     participants = sheet.get_all_records()
     for p in participants:
         if p["Name"] == username:
-            return render_template("manito.html", manito=p["ManittoEncoded"])
+            if not p["ManittoEncoded"]:
+                return "아직 마니또 매칭이 완료되지 않았습니다."
+            manitto_name = decode_manitto(p["ManittoEncoded"])
+            return render_template("manito.html", manito=manitto_name)
     return "사용자를 찾을 수 없습니다."
 
+# 기본 URL -> /register 로 리다이렉트
+@app.route("/")
+def index():
+    return redirect("/register")
+
 if __name__ == "__main__":
-    import os
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    app.run(debug=True)
