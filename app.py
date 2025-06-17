@@ -92,7 +92,7 @@ def login():
 
         for p in participants:
             if p["Name"] == name and p["PasswordHash"] == hashed_pw:
-                manito_enc = p.get("ManittoEncoded", "")
+                manito_enc = p.get("ManitoEncoded", "")
                 if not manito_enc:
                     flash("아직 마니또 매칭이 완료되지 않았습니다.")
                     return redirect(url_for('login'))
@@ -110,7 +110,7 @@ def manito(username):
     participants = sheet.get_all_records()
     for p in participants:
         if p["Name"] == username:
-            manito_enc = p.get("ManittoEncoded", "")
+            manito_enc = p.get("ManitoEncoded", "")
             if not manito_enc:
                 return "아직 마니또 매칭이 완료되지 않았습니다."
             manito_dec = decrypt_manito(manito_enc)
