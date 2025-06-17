@@ -86,4 +86,5 @@ def manito(username):
     return "사용자를 찾을 수 없습니다."
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 10000))  # Render가 할당한 포트 사용
+    app.run(host="0.0.0.0", port=port)
