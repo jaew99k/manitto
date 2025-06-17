@@ -12,9 +12,10 @@ app = Flask(__name__)
 SHEET_ID = "12FjEPKhsZS0UvGHx9Kdi3HBLtz6iOz7USAq9mhKG6cA"
 SHEET_NAME = "participants"
 
-# credentials 환경변수에서 불러오기
+# credentials 환경변수에서 불러오기 + 필수 OAuth scope 명시
 creds_info = json.loads(os.environ["GOOGLE_CREDENTIALS"])
-creds = Credentials.from_service_account_info(creds_info)
+scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+creds = Credentials.from_service_account_info(creds_info, scopes=scopes)
 client = gspread.authorize(creds)
 sheet = client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
 
