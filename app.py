@@ -25,8 +25,8 @@ def encrypt_manito(name):
     return ''.join(chr((ord(c) + 3) % 256) for c in name)
 
 # 복호화 함수
-def decrypt_manito(name):
-    return ''.join(chr((ord(c) - 3) % 256) for c in name)
+def decrypt_manito(enc_name):
+    return ''.join(chr((ord(c) - 3) % 256) for c in enc_name)
 
 def assign_manittos():
     names = sheet.col_values(1)[1:]
@@ -101,7 +101,7 @@ def login():
         participants = sheet.get_all_records()
         for p in participants:
             if p["Name"] == name and p["PasswordHash"] == hashed_pw:
-                if not p.get("ManittoEncoded", ""):
+                if not p.get("ManitoEncoded", ""):
                     return "아직 마니또 매칭이 완료되지 않았습니다."
                 return redirect(url_for('manito', username=name))
         return "로그인 실패: 이름 또는 비밀번호가 잘못되었습니다."
@@ -112,7 +112,7 @@ def manito(username):
     participants = sheet.get_all_records()
     for p in participants:
         if p["Name"] == username:
-            encrypted_manito = p.get("ManittoEncoded", "")
+            encrypted_manito = p.get("ManitoEncoded", "")
             if not encrypted_manito:
                 return "아직 마니또 매칭이 완료되지 않았습니다."
             decrypted_manito = decrypt_manito(encrypted_manito)
