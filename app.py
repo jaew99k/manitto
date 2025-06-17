@@ -25,8 +25,8 @@ def encrypt_manito(name):
     return ''.join(chr((ord(c) + 3) % 256) for c in name)
 
 # 복호화 함수
-def decrypt_manito(enc_name):
-    return ''.join(chr((ord(c) - 3) % 256) for c in enc_name)
+def decrypt_manito(name):
+    return ''.join(chr((ord(c) - 3) % 256) for c in name)
 
 def assign_manittos():
     names = sheet.col_values(1)[1:]
